@@ -1,0 +1,1846 @@
+---
+title: "model"
+author: "Christine Pu"
+date: "2024-02-20"
+output: html_document
+---
+  
+```{r setup, include=FALSE}
+
+# load packages -----------------------------------------------------------
+
+library(tidyverse)
+library(dplyr)
+library(here)
+library(sjPlot)
+library(broom.mixed)
+library(dotwhisker)
+library(ggpubr)
+library(ggthemes)
+library(scales)
+
+# source relevant files ---------------------------------------------------
+
+source(here("code", "clean.R"))
+
+# import data -------------------------------------------------------------
+
+# survey data 
+
+survey <- readRDS(here("data", "clean_data.rds")) %>% 
+   mutate(ln_crop_rev_total = log(crop_rev_total))
+
+# extracted global agro-ecological zone according to the 57 class classification system from the Food and Agriculture Organization
+
+gaez <- read.csv(here("data", "gaez.csv")) %>%
+  as_tibble() %>% 
+  select(hhid, GAEZ_57class1) %>% 
+  rename(aez_57 = GAEZ_57class1)
+
+# merge baseline data with extracted gaez from QGIS
+
+data <- left_join(
+  survey,
+  gaez,
+  by = c("hhid")
+) %>% 
+  mutate(
+    aez_57 = factor(aez_57)
+  )
+
+# run regression models -------------------------------------------------------------
+
+# run model with no interaction terms
+
+model_noint <- lm(
+  ln_crop_rev_total ~
+    
+    # irrigation
+    
+    irrigate_any_dry +
+    irrig_prev_50plus +
+    
+    # household covariates
+    
+    fem_hoh +
+    num_hh_member_5_to_65yrs +
+    hoh_any_formal_school +
+    owns_mobile_phone +
+    nonfarm_livelihood +
+    
+    # agricultural covariates
+    
+    total_acres_planted_annual +
+    labour +
+    
+    # woreda covariates
+    
+    woreda +
+    time_primary_market_h +
+    time_paved_road_h,
+  
+  data = data
+)
+
+# run model with binary interaction term
+
+model_int <- lm(
+  ln_crop_rev_total ~
+    
+    # irrigation interaction term
+    
+    irrigate_any_dry * irrig_prev_50plus +
+    
+    # household covariates
+    
+    fem_hoh +
+    num_hh_member_5_to_65yrs +
+    hoh_any_formal_school +
+    owns_mobile_phone +
+    nonfarm_livelihood +
+    
+    # agricultural covariates
+    
+    total_acres_planted_annual +
+    labour +
+    
+    # woreda covariates
+    
+    woreda +
+    time_primary_market_h +
+    time_paved_road_h,
+  
+  data = data
+)
+
+# assign reference group for irrigation prevalence variable
+
+data$irrig_prev_village <- relevel(factor(data$irrig_prev_village), ref = "1. Very few? (<10%)")
+
+# run model with categorical interaction term
+
+model_int_categorical <- lm(
+  ln_crop_rev_total ~
+    
+    # irrigation interaction effect
+    
+    irrigate_any_dry * irrig_prev_village +
+    
+    # household covariates
+    
+    fem_hoh +
+    num_hh_member_5_to_65yrs +
+    hoh_any_formal_school +
+    owns_mobile_phone +
+    nonfarm_livelihood +
+    
+    # agricultural covariates
+    
+    total_acres_planted_annual +
+    labour +
+    
+    # woreda covariates
+    
+    woreda +
+    time_primary_market_h +
+    time_paved_road_h,
+  
+  data = data
+)
+
+# run robustness check: model with binary interaction term with ppi and gaez
+
+model_int_robust <- lm(
+  ln_crop_rev_total ~
+    
+    # irrigation interaction term
+    
+    irrigate_any_dry * irrig_prev_50plus +
+    
+    # household covariates
+    
+    fem_hoh +
+    num_hh_member_5_to_65yrs +
+    hoh_any_formal_school +
+    owns_mobile_phone +
+    nonfarm_livelihood +
+    
+    # agricultural covariates
+    
+    total_acres_planted_annual +
+    labour +
+    
+    # woreda covariates
+    
+    woreda +
+    time_primary_market_h +
+    time_paved_road_h +
+    
+    # robustness checks
+    
+    ppi_prob_1.90 +
+    aez_57,
+  
+  data = data
+)
+
+# run robustness check: model with categorical interaction term with ppi and gaez
+
+model_int_categorical_robust <- lm(
+  ln_crop_rev_total ~
+    
+    # irrigation interaction effect
+    
+    irrigate_any_dry * irrig_prev_village +
+    
+    # household covariates
+    
+    fem_hoh +
+    num_hh_member_5_to_65yrs +
+    hoh_any_formal_school +
+    owns_mobile_phone +
+    nonfarm_livelihood +
+    
+    # agricultural covariates
+    
+    total_acres_planted_annual +
+    labour +
+    
+    # woreda covariates
+    
+    woreda +
+    time_primary_market_h +
+    time_paved_road_h +
+    
+    # robustness checks
+    
+    ppi_prob_1.90 +
+    aez_57,
+  
+  data = data
+)
+
+# run robustness check: model with binary interaction effect with revenue per capita as the outcome
+
+model_int_revpp <- lm(
+  ln_crop_rev_total ~
+    
+    # irrigation interaction term
+    
+    irrigate_any_dry * irrig_prev_50plus +
+    
+    # household covariates
+    
+    fem_hoh +
+    hoh_any_formal_school +
+    owns_mobile_phone +
+    nonfarm_livelihood +
+    
+    # agricultural covariates
+    
+    total_acres_planted_annual +
+    labour +
+    
+    # woreda covariates
+    
+    woreda +
+    time_primary_market_h +
+    time_paved_road_h,
+  
+  data = data %>% 
+    mutate(ln_crop_rev_total_pp = log(crop_rev_total / hh_size))
+)
+
+# run robustness check: model with categorical interaction effect with revenue per capita as the outcome
+
+model_int_categorical_revpp <- lm(
+  ln_crop_rev_total_pp ~
+    
+    # irrigation interaction effect
+    
+    irrigate_any_dry * irrig_prev_village +
+    
+    # household covariates
+    
+    fem_hoh +
+    hoh_any_formal_school +
+    owns_mobile_phone +
+    nonfarm_livelihood +
+    
+    # agricultural covariates
+    
+    total_acres_planted_annual +
+    labour +
+    
+    # woreda covariates
+    
+    woreda +
+    time_primary_market_h +
+    time_paved_road_h,
+  
+  data = data %>% 
+    mutate(ln_crop_rev_total_pp = log(crop_rev_total / hh_size))
+)
+
+# run poisson regression: number of crops planted in the dry season (comparing between high vs. low prevalence irrigators)
+
+model_num_dry_crops_planted <-
+  glm(
+    total_num_crops_planted_dry_both_ssn ~ irrig_prev_50plus +
+      
+   # household covariates
+    
+    fem_hoh +
+    num_hh_member_5_to_65yrs +
+    hoh_any_formal_school +
+    owns_mobile_phone +
+    nonfarm_livelihood +
+    
+    # agricultural covariates
+    
+    total_acres_planted_annual +
+    labour +
+    nonmanual_irrig +
+    
+    # woreda covariates
+    
+    woreda +
+    time_primary_market_h +
+    time_paved_road_h,
+  
+    family = "poisson",
+
+    data = data %>%
+      filter(irrigate_any_dry == 1,
+             is.na(irrig_prev_50plus) == FALSE
+      )
+  )
+
+# run logistic regression: whether household sold at least one crop in the dry season (comparing between high vs. low prevalence irrigators)
+
+# isolate the crops that are planted by irrigating households in the dry season 
+
+crops_planted_dry <- data %>% 
+  filter(
+    irrigate_any_dry == 1
+  ) %>% 
+  select(
+    hhid,
+    barley_ssn:rue_ssn
+  ) %>% 
+  pivot_longer(-hhid) %>% 
+  rename(
+    crop = name,
+    planting_season = value
+  ) %>% 
+  mutate(
+    crop = gsub("_ssn", "", crop)
+  ) %>% 
+  filter(
+    planting_season == "2. Dry" | planting_season == "3. Both" 
+  )
+
+# isolate the crops that are sold by irrigating households
+
+crops_sold <- data %>% 
+  filter(
+    irrigate_any_dry == 1
+  ) %>% 
+  select(
+    hhid,
+    barley_st:hvs_sld_other_st_dnkrefused
+  ) %>% 
+  pivot_longer(-hhid) %>% 
+  filter(
+    value == "Yes"
+  ) %>% 
+  mutate(
+    crop = gsub("\\_st.*", "", name), 
+    crop_use = gsub(".*\\_st_*", "", name),
+    crop_use = ifelse(
+      crop_use == "traded", "sold / traded", ifelse(
+        crop_use == "sold", "sold / traded", crop_use
+      )
+    )
+  ) %>%
+  filter(crop_use != "dnkrefused" & 
+           crop_use == "sold / traded") %>%
+  select(
+    hhid,
+    crop,
+    crop_use
+  )
+
+# compute the number of crops planted and sold in the dry season by each household 
+
+num_dry_crops_sold <- left_join(
+  crops_planted_dry,
+  unique(crops_sold), 
+  by = c("hhid", "crop")
+) %>%
+  mutate(
+    crop_use = ifelse(
+      is.na(crop_use) == TRUE, "did not sell", crop_use
+    )
+  ) %>% 
+  filter(
+    crop_use != "did not sell"
+  ) %>% 
+  group_by(
+    hhid
+  ) %>% 
+  summarise(
+    n_dry_crops_sold = n()
+  )
+
+# run logistic regression: whether the household sold at least one crop planted in the dry season (comparing between high vs. low prevalence irrigators)
+
+model_sold_min_one_dry_crop <- glm(
+  sold_min_one_dry_crop ~ irrig_prev_50plus +
+    
+    #household covariates
+    
+    fem_hoh +
+    num_hh_member_5_to_65yrs +
+    hoh_any_formal_school +
+    owns_mobile_phone +
+    nonfarm_livelihood +
+    
+    # agricultural covariates
+
+    labour +
+    total_acres_planted_annual +
+    nonmanual_irrig +
+    
+    # woreda covariates
+    
+    woreda +
+    time_primary_market_h +
+    time_paved_road_h,
+  
+  family = "binomial",
+  
+  data = left_join(
+    data,
+    num_dry_crops_sold,
+    by = c("hhid")
+  ) %>%
+    filter(
+      irrigate_any_dry == 1,
+      is.na(irrig_prev_50plus) == FALSE
+    ) %>%
+    mutate(
+      n_dry_crops_sold = as.numeric(
+        ifelse(
+          is.na(n_dry_crops_sold) == TRUE, 0, n_dry_crops_sold 
+        )
+      ),
+      sold_min_one_dry_crop = ifelse(
+        n_dry_crops_sold == 0, 0, ifelse(
+          n_dry_crops_sold > 0, 1, NA
+        )
+      )
+    )
+  )
+    
+# run logistic regression: whether the household's top 3 revenue crops were planted in the dry season (comparing between high vs. low prevalence irrigators)
+
+model_top3_dry_month <- glm(
+  top3_planted_dry ~ irrig_prev_50plus +
+    
+    # household covariates
+    
+    fem_hoh +
+    num_hh_member_5_to_65yrs +
+    hoh_any_formal_school +
+    owns_mobile_phone +
+    nonfarm_livelihood +
+    
+    # agricultural covariates
+    
+    labour +
+    total_acres_planted_annual +
+    nonmanual_irrig +
+    
+    # woreda covariates
+    
+    woreda +
+    time_primary_market_h +
+    time_paved_road_h,
+  
+  family = "binomial",
+  
+  data = data %>%
+    filter(
+      irrigate_any_dry == 1,
+      is.na(irrig_prev_50plus) == FALSE,
+      crop_planing_month_june2021_1 != ""
+    ) %>%
+    mutate(
+      top3_planted_dry = ifelse(
+          crop_planing_month_oct2021_1 == "Yes" |
+          crop_planing_month_oct2021_2 == "Yes" |
+          crop_planing_month_oct2021_3 == "Yes" |
+          crop_planing_month_nov2021_1 == "Yes" |
+          crop_planing_month_nov2021_2 == "Yes" |
+          crop_planing_month_nov2021_3 == "Yes" |
+          crop_planing_month_dec2021_1 == "Yes" |
+          crop_planing_month_dec2021_2 == "Yes" |
+          crop_planing_month_dec2021_3 == "Yes" |
+          crop_planing_month_jan2022_1 == "Yes" |
+          crop_planing_month_jan2022_2 == "Yes" |
+          crop_planing_month_jan2022_3 == "Yes" |
+          crop_planing_month_feb2022_1 == "Yes" |
+          crop_planing_month_feb2022_2 == "Yes" |
+          crop_planing_month_feb2022_3 == "Yes", 1, 0
+      )
+    )
+)
+
+# run logistic regression: whether the household sold one of its top 3 crops to a local trader (comparing between high vs. low prevalence irrigators)
+
+model_sold_local_trader <- glm(
+  sold_local_trader ~ irrig_prev_50plus + 
+    
+    # household covariates
+    
+    fem_hoh +
+    num_hh_member_5_to_65yrs +
+    hoh_any_formal_school +
+    owns_mobile_phone +
+    nonfarm_livelihood +
+    
+    # agricultural covariates
+    
+    labour +
+    total_acres_planted_annual +
+    nonmanual_irrig +
+    
+    # woreda covariates
+    
+    woreda +
+    time_primary_market_h +
+    time_paved_road_h,
+  
+  family = "binomial",
+  
+  data = data %>%
+  filter(
+    irrigate_any_dry == 1,
+    is.na(irrig_prev_50plus) == FALSE,
+    is.na(crop_sold_place_1) == FALSE, 
+    is.na(sold_to_1) == FALSE
+  ) %>% 
+  unite(sale_loc_cust_1, c("crop_sold_place_1", "sold_to_1")) %>%
+  unite(sale_loc_cust_2, c("crop_sold_place_2", "sold_to_2")) %>%
+  unite(sale_loc_cust_3, c("crop_sold_place_3", "sold_to_3")) %>%
+  mutate(
+    sold_local_trader = ifelse(
+      sale_loc_cust_1 == "local market_trader" | sale_loc_cust_2 == "local market_trader" | sale_loc_cust_3 == "local market_trader" |
+        sale_loc_cust_1 == "garden_trader" | sale_loc_cust_2 == "garden_trader" | sale_loc_cust_3 == "garden_trader", 1, 0
+      )
+    )
+  )
+
+# run logistic regression: whether the household used any purchased seeds (comparing between high vs. low prevalence irrigators)
+
+model_seeds <- glm(
+  seeds ~ irrig_prev_50plus + 
+    
+    # household covariates
+    
+    fem_hoh +
+    num_hh_member_5_to_65yrs +
+    hoh_any_formal_school +
+    owns_mobile_phone +
+    nonfarm_livelihood +
+    
+    # agricultural covariates
+    
+    labour +
+    total_acres_planted_annual +
+    nonmanual_irrig +
+    
+    # woreda covariates
+    
+    woreda +
+    time_primary_market_h +
+    time_paved_road_h,
+  
+  family = "binomial",
+  
+  data = data %>%
+    filter(
+      irrigate_any_dry == 1,
+      is.na(irrig_prev_50plus) == FALSE, 
+      is.na(seeds) == FALSE 
+    )
+  )
+
+# run logistic regression: whether the household hired any wage labor (comparing between high vs. low prevalence irrigators)
+
+model_labor <- glm(
+  labour ~ irrig_prev_50plus + 
+    
+    # household covariates
+    
+    fem_hoh +
+    num_hh_member_5_to_65yrs +
+    hoh_any_formal_school +
+    owns_mobile_phone +
+    nonfarm_livelihood +
+    
+    # agricultural covariates
+    
+    total_acres_planted_annual +
+    nonmanual_irrig +
+    
+    # woreda covariates
+    
+    woreda +
+    time_primary_market_h +
+    time_paved_road_h,
+  
+  family = "binomial",
+  
+  data = data %>%
+    filter(
+      irrigate_any_dry == 1,
+      is.na(irrig_prev_50plus) == FALSE, 
+      is.na(labour) == FALSE
+    )
+  )
+
+# run logistic regression: whether the gender earnings gap persists among irrigators
+
+model_irrig_gender_gap <- lm(
+  ln_crop_rev_total ~
+
+    # covariate of primary interest
+    
+    fem_hoh + 
+    
+    # household covariates
+    
+    num_hh_member_5_to_65yrs +
+    hoh_any_formal_school +
+    owns_mobile_phone +
+    nonfarm_livelihood +
+    
+    # agricultural covariates
+    
+    total_acres_planted_annual +
+    labour +
+    
+    # woreda covariates
+    
+    woreda +
+    time_primary_market_h +
+    time_paved_road_h,
+  
+  data = data %>% 
+    filter(
+      irrigate_any_dry == 1
+    )
+)
+
+```
+
+# figures in main paper
+
+```{r figure1, echo = FALSE}
+
+# extract parameters from model with no interaction terms
+
+df_model_noint <- left_join(
+  tidy(model_noint),
+  confint(model_noint) %>% 
+    as_tibble() %>% 
+    mutate(
+      term = rownames(confint(model_noint))
+    ) %>% 
+    rename(ci_lower = `2.5 %`,
+           ci_upper = `97.5 %`),
+  by = c("term")
+) %>% 
+  mutate(
+    model = "no interaction effects",
+    estimate = exp(estimate),
+    conf.low = exp(ci_lower),
+    conf.high = exp(ci_upper)
+  ) %>% 
+  select(
+    - statistic,
+    - std.error
+  )
+
+# extract parameters from model with irrigation interaction term
+
+df_model_int <- left_join(
+  tidy(model_int),
+  confint(model_int) %>% 
+    as_tibble() %>% 
+    mutate(
+      term = rownames(confint(model_int))
+    ) %>% 
+    rename(ci_lower = `2.5 %`,
+           ci_upper = `97.5 %`),
+  by = c("term")
+) %>% 
+  mutate(
+    model = "interaction effects",
+    estimate = exp(estimate),
+    conf.low = exp(ci_lower),
+    conf.high = exp(ci_upper)
+  ) %>% 
+  select(
+    - statistic,
+    - std.error
+  )
+
+# visualize model results
+
+dwplot(rbind(df_model_noint, df_model_int) %>% 
+         relabel_predictors(c(`irrigate_any_dry1` = "Irrigator (Yes)", 
+                              `irrig_prev_50plus1` = "High (\u2265 50%) village irrigation prevalence (Yes)",
+                              `irrigate_any_dry1:irrig_prev_50plus1` = "Irrigator x High (\u2265 50%) village irrigation prevalence",
+                              `fem_hoh1` = "Female HOH (Yes)", 
+                              `num_hh_member_5_to_65yrs` = "Household members aged 5-65 [#]",
+                              `hoh_any_formal_school` = "HOH attended formal school (Yes)",
+                              `owns_mobile_phone1` = "Owns mobile phone (Yes)",
+                              `nonfarm_livelihood1` = "Earns from non-farm activities (Yes)",
+                              `total_acres_planted_annual` = "Total area cultivated [acres]",
+                              `labour1` = "Hired labor (Yes)",
+                              `woredaFarta` = "Woreda (Farta)",
+                              `woredaNorth Mecha` = "Woreda (North Mecha)",
+                              `time_primary_market_h` = "Walking time to primary market [hr]",
+                              `time_paved_road_h` = "Walking time to paved road [hr]")),
+       dot_args = list(size = 3), 
+       whisker_args = list(size = 1)) +
+  theme_bw(base_size = 15) + 
+  labs(title = "", 
+       x = "Exponentiated Coefficient Estimate with 95% CIs", 
+       y = "") +
+  theme(plot.title = element_text(face="bold"),
+        legend.position = "bottom",
+        legend.background = element_rect(colour="grey80"),
+        legend.title.align = .5) +
+  scale_shape_discrete(name  = "model", breaks = c(0, 1)) + 
+  scale_colour_grey(start = 0.3, end = 0.7, name = "model") + 
+  geom_vline(xintercept=c(1), linetype="dotted")
+
+```
+
+```{r figure2, echo = FALSE}
+
+irrig_customer_crop1_low <- data %>% 
+  filter(
+    irrigate_any_dry == 1 & 
+      irrig_prev_50plus == 0
+    ) %>% 
+  filter(
+    is.na(sold_to_1) == FALSE,
+    is.na(crop_sold_place_1) == FALSE 
+  ) %>% 
+  unite(sale_loc_cust, c("crop_sold_place_1", "sold_to_1")) %>%
+  group_by(hhid, sale_loc_cust) %>% 
+  summarise(
+    n_hh = n()
+  )
+
+irrig_customer_crop2_low <- data %>% 
+  filter(
+    irrigate_any_dry == 1 & 
+      irrig_prev_50plus == 0
+    ) %>% 
+  filter(
+    is.na(sold_to_2) == FALSE,
+    is.na(crop_sold_place_2) == FALSE
+  ) %>%
+  unite(sale_loc_cust, c("crop_sold_place_2", "sold_to_2")) %>%
+  group_by(hhid, sale_loc_cust) %>% 
+  summarise(
+    n_hh = n()
+  )
+
+irrig_customer_crop3_low <- data %>% 
+  filter(
+    irrigate_any_dry == 1 & 
+      irrig_prev_50plus == 0
+    ) %>% 
+  filter(
+    is.na(sold_to_3) == FALSE, 
+    is.na(crop_sold_place_3) == FALSE 
+  ) %>% 
+  unite(sale_loc_cust, c("crop_sold_place_3", "sold_to_3")) %>%
+  group_by(hhid, sale_loc_cust) %>% 
+  summarise(
+    n_hh = n()
+  )
+
+irrig_customer_crop1_high <- data %>% 
+  filter(
+    irrigate_any_dry == 1 & 
+      irrig_prev_50plus == 1
+    ) %>% 
+  filter(
+    is.na(sold_to_1) == FALSE,
+    is.na(crop_sold_place_1) == FALSE
+  ) %>% 
+  unite(sale_loc_cust, c("crop_sold_place_1", "sold_to_1")) %>%
+  group_by(hhid, sale_loc_cust) %>% 
+  summarise(
+    n_hh = n()
+  )
+
+irrig_customer_crop2_high <- data %>% 
+  filter(
+    irrigate_any_dry == 1 & 
+      irrig_prev_50plus == 1
+    ) %>% 
+  filter(
+    is.na(sold_to_2) == FALSE,
+    is.na(crop_sold_place_2) == FALSE 
+  ) %>% 
+  unite(sale_loc_cust, c("crop_sold_place_2", "sold_to_2")) %>%
+  group_by(hhid, sale_loc_cust) %>% 
+  summarise(
+    n_hh = n()
+  )
+
+irrig_customer_crop3_high <- data %>% 
+  filter(
+    irrigate_any_dry == 1 & 
+      irrig_prev_50plus == 1
+    ) %>% 
+  filter(
+    is.na(sold_to_3) == FALSE, 
+    is.na(crop_sold_place_3) == FALSE 
+  ) %>% 
+  unite(sale_loc_cust, c("crop_sold_place_3", "sold_to_3")) %>%
+  group_by(hhid, sale_loc_cust) %>% 
+  summarise(
+    n_hh = n()
+  )
+
+# visualize bar chart
+
+rbind(
+  rbind(irrig_customer_crop1_low,
+        irrig_customer_crop2_low,
+        irrig_customer_crop3_low) %>%
+    group_by(hhid, sale_loc_cust) %>%
+    summarise(n = n()) %>% 
+    group_by(sale_loc_cust) %>%
+    summarise(
+      n_hh = n(),
+      prop = n_hh / 99 # 99 "low prevalence" irrigators sold at least one crop
+    ) %>% 
+    mutate(
+      irrig_prev_50plus = "less than half"
+    ),
+  rbind(
+    irrig_customer_crop1_high,
+    irrig_customer_crop2_high,
+    irrig_customer_crop3_high
+  ) %>% 
+    group_by(hhid, sale_loc_cust) %>% 
+    summarise(n = n()) %>% 
+    group_by(sale_loc_cust) %>% 
+    summarise(
+      n_hh = n(),
+      prop = n_hh / 223 # 223 "high prevalence" irrigators sold at least one crop 
+    ) %>% 
+    mutate(
+      irrig_prev_50plus = "more than half"
+    )
+) %>% 
+  mutate(
+    irrig_prevalence = case_when(
+      irrig_prev_50plus == "less than half" ~ "Low (< 50%, n = 99)",
+      irrig_prev_50plus == "more than half" ~ "High (\u2265 50%, n = 223)"
+    ), 
+    irrig_prevalence = factor(irrig_prevalence, levels = c("Low (< 50%, n = 99)", "High (\u2265 50%, n = 223)"))
+  ) %>% 
+  filter(sale_loc_cust %in% c("garden_trader", "major market_trader", "major market_households", "local market_trader", "local market_households")) %>%
+  mutate(
+    sale_loc_cust = case_when(
+      sale_loc_cust == "garden_trader" ~ "To traders \n at farm",
+      sale_loc_cust == "local market_trader" ~ "To traders \n at local market",
+      sale_loc_cust == "local market_households" ~ "To households \n at local market",
+      sale_loc_cust == "major market_trader" ~ "To traders \n at city market", 
+      sale_loc_cust == "major market_households" ~ "To households \n at city market"),
+    sale_loc_cust = factor(sale_loc_cust, levels = c("To traders \n at farm", "To traders \n at local market", "To traders \n at city market", "To households \n at local market", "To households \n at city market")),
+  ) %>% 
+  mutate(
+    lower_ci = as.numeric(
+      ifelse(
+          irrig_prev_50plus == "less than half", (prop - 1.96*(sqrt(prop*(1-prop)/99))), ifelse(
+            irrig_prev_50plus == "more than half", (prop - 1.96*(sqrt(prop*(1-prop)/223))), "error"
+            )
+          )
+      ),
+    upper_ci = as.numeric(
+      ifelse(
+          irrig_prev_50plus == "less than half", (prop + 1.96*(sqrt(prop*(1-prop)/99))), ifelse(
+            irrig_prev_50plus == "more than half", (prop + 1.96*(sqrt(prop*(1-prop)/223))), "error"
+            )
+          )
+        )
+    ) %>% 
+  ggbarplot(
+    x = "sale_loc_cust", 
+    y = "prop",
+    fill = "irrig_prevalence",
+    palette = "Paired",
+    ylab = "",
+    xlab = "",
+    position = position_dodge(),
+  ) + 
+  geom_errorbar(
+    aes(
+      group = irrig_prev_50plus, 
+      ymax = upper_ci, 
+      ymin = lower_ci
+      ),
+    position = position_dodge(width = 0.9), width = 0.2
+    ) +
+  theme_gdocs() +
+  guides(fill = guide_legend(title = "Reported village irrigation prevalence", nrow = 1)) +
+  theme(text = element_text(size=15)) +
+  scale_y_continuous(labels = percent_format(accuracy = 1), limits = c(0, 1)) 
+
+```
+
+```{r figure3, echo = FALSE}
+
+nonirrig_month_crop1 <- data %>% 
+  filter(
+    irrigate_any_dry == 0,
+    crop_planing_month_june2021_1 != ""
+  ) %>% 
+  select(
+    hhid,
+    crop_planing_month_june2021_1:crop_planing_month_notplanted_1
+  ) %>% 
+  pivot_longer(
+    crop_planing_month_june2021_1:crop_planing_month_notplanted_1
+  ) %>% 
+  mutate(
+    name = gsub("crop_planing_month_", "", name),
+    name = gsub("\\_1", "", name),
+    name = factor(name, levels = c("notplanted", "sep2021", "aug2021", "jul2021", "june2021", "may2022", "apr2022", "mar2022", "feb2022", "jan2022", "dec2021", "nov2021", "oct2021"))
+  ) %>% 
+  rename(
+    month_planted = name
+  ) %>% 
+  filter(
+    value == "Yes",
+    month_planted != "notplanted"
+  )
+
+nonirrig_month_crop2 <- data %>% 
+  filter(
+    irrigate_any_dry == 0
+  ) %>% 
+  select(
+    hhid,
+    crop_planing_month_june2021_2:crop_planing_month_notplanted_2
+  ) %>% 
+  pivot_longer(
+    crop_planing_month_june2021_2:crop_planing_month_notplanted_2
+  ) %>% 
+  mutate(
+    name = gsub("crop_planing_month_", "", name),
+    name = gsub("\\_2", "", name),
+    name = factor(name, levels = c("notplanted", "sep2021", "aug2021", "jul2021", "june2021", "may2022", "apr2022", "mar2022", "feb2022", "jan2022", "dec2021", "nov2021", "oct2021"))
+  ) %>% 
+  rename(
+    month_planted = name
+  ) %>% 
+  filter(
+    value == "Yes",
+    month_planted != "notplanted"
+  )
+
+nonirrig_month_crop3 <- data %>% 
+  filter(
+    irrigate_any_dry == 0
+  ) %>% 
+  select(
+    hhid,
+    crop_planing_month_june2021_3:crop_planing_month_notplanted_3
+  ) %>% 
+  pivot_longer(
+    crop_planing_month_june2021_3:crop_planing_month_notplanted_3
+  ) %>% 
+  mutate(
+    name = gsub("crop_planing_month_", "", name),
+    name = gsub("\\_3", "", name),
+    name = factor(name, levels = c("notplanted", "sep2021", "aug2021", "jul2021", "june2021", "may2022", "apr2022", "mar2022", "feb2022", "jan2022", "dec2021", "nov2021", "oct2021"))
+  ) %>% 
+  rename(
+    month_planted = name
+  ) %>% 
+  filter(
+    value == "Yes",
+    month_planted != "notplanted"
+  )
+
+irrig_month_crop1_low <- data %>% 
+  filter(
+    irrigate_any_dry == 1, 
+    irrig_prev_50plus == 0,
+    crop_planing_month_june2021_1 != ""
+  ) %>% 
+  select(
+    hhid,
+    crop_planing_month_june2021_1:crop_planing_month_notplanted_1
+  ) %>% 
+  pivot_longer(
+    crop_planing_month_june2021_1:crop_planing_month_notplanted_1
+  ) %>% 
+  mutate(
+    name = gsub("crop_planing_month_", "", name),
+    name = gsub("\\_1", "", name),
+    name = factor(name, levels = c("notplanted", "sep2021", "aug2021", "jul2021", "june2021", "may2022", "apr2022", "mar2022", "feb2022", "jan2022", "dec2021", "nov2021", "oct2021"))
+  ) %>% 
+  rename(
+    month_planted = name
+  ) %>% 
+  filter(
+    value == "Yes",
+    month_planted != "notplanted"
+  )
+
+irrig_month_crop2_low <- data %>% 
+  filter(
+    irrigate_any_dry == 1, 
+    irrig_prev_50plus == 0
+  ) %>% 
+  select(
+    hhid,
+    crop_planing_month_june2021_2:crop_planing_month_notplanted_2
+  ) %>% 
+  pivot_longer(
+    crop_planing_month_june2021_2:crop_planing_month_notplanted_2
+  ) %>% 
+  mutate(
+    name = gsub("crop_planing_month_", "", name),
+    name = gsub("\\_2", "", name),
+    name = factor(name, levels = c("notplanted", "sep2021", "aug2021", "jul2021", "june2021", "may2022", "apr2022", "mar2022", "feb2022", "jan2022", "dec2021", "nov2021", "oct2021"))
+  ) %>% 
+  rename(
+    month_planted = name
+  ) %>% 
+  filter(
+    value == "Yes",
+    month_planted != "notplanted"
+  )
+
+irrig_month_crop3_low <- data %>% 
+  filter(
+    irrigate_any_dry == 1, 
+    irrig_prev_50plus == 0
+  ) %>% 
+  select(
+    hhid,
+    crop_planing_month_june2021_3:crop_planing_month_notplanted_3
+  ) %>% 
+  pivot_longer(
+    crop_planing_month_june2021_3:crop_planing_month_notplanted_3
+  ) %>% 
+  mutate(
+    name = gsub("crop_planing_month_", "", name),
+    name = gsub("\\_3", "", name),
+    name = factor(name, levels = c("notplanted", "sep2021", "aug2021", "jul2021", "june2021", "may2022", "apr2022", "mar2022", "feb2022", "jan2022", "dec2021", "nov2021", "oct2021"))
+  ) %>% 
+  rename(
+    month_planted = name
+  ) %>% 
+  filter(
+    value == "Yes",
+    month_planted != "notplanted"
+  )
+
+irrig_month_crop1_high <- data %>% 
+  filter(
+    irrigate_any_dry == 1, 
+    irrig_prev_50plus == 1,
+    crop_planing_month_june2021_1 != ""
+  ) %>%
+  select(
+    hhid,
+    crop_planing_month_june2021_1:crop_planing_month_notplanted_1
+  ) %>%
+  pivot_longer(
+    crop_planing_month_june2021_1:crop_planing_month_notplanted_1
+  ) %>% 
+  mutate(
+    name = gsub("crop_planing_month_", "", name),
+    name = gsub("\\_1", "", name),
+    name = factor(name, levels = c("notplanted", "sep2021", "aug2021", "jul2021", "june2021", "may2022", "apr2022", "mar2022", "feb2022", "jan2022", "dec2021", "nov2021", "oct2021"))
+  ) %>% 
+  rename(
+    month_planted = name
+  ) %>% 
+  filter(
+    value == "Yes",
+    month_planted != "notplanted"
+  )
+
+irrig_month_crop2_high <- data %>% 
+  filter(
+    irrigate_any_dry == 1, 
+    irrig_prev_50plus == 1
+  ) %>% 
+  select(
+    hhid,
+    crop_planing_month_june2021_2:crop_planing_month_notplanted_2
+  ) %>% 
+  pivot_longer(
+    crop_planing_month_june2021_2:crop_planing_month_notplanted_2
+  ) %>% 
+  mutate(
+    name = gsub("crop_planing_month_", "", name),
+    name = gsub("\\_2", "", name),
+    name = factor(name, levels = c("notplanted", "sep2021", "aug2021", "jul2021", "june2021", "may2022", "apr2022", "mar2022", "feb2022", "jan2022", "dec2021", "nov2021", "oct2021"))
+  ) %>% 
+  rename(
+    month_planted = name
+  ) %>% 
+  filter(
+    value == "Yes",
+    month_planted != "notplanted"
+  )
+
+irrig_month_crop3_high <- data %>% 
+  filter(
+    irrigate_any_dry == 1, 
+    irrig_prev_50plus == 1
+  ) %>% 
+  select(
+    hhid,
+    crop_planing_month_june2021_3:crop_planing_month_notplanted_3
+  ) %>% 
+  pivot_longer(
+    crop_planing_month_june2021_3:crop_planing_month_notplanted_3
+  ) %>% 
+  mutate(
+    name = gsub("crop_planing_month_", "", name),
+    name = gsub("\\_3", "", name),
+    name = factor(name, levels = c("notplanted", "sep2021", "aug2021", "jul2021", "june2021", "may2022", "apr2022", "mar2022", "feb2022", "jan2022", "dec2021", "nov2021", "oct2021"))
+  ) %>% 
+  rename(
+    month_planted = name
+  ) %>% 
+  filter(
+    value == "Yes",
+    month_planted != "notplanted"
+  )
+
+# visualize bar graphs
+
+rbind(
+  rbind(
+    nonirrig_month_crop1,
+    nonirrig_month_crop2,
+    nonirrig_month_crop3
+  ) %>% 
+    group_by(
+      hhid, 
+      month_planted
+    ) %>% 
+    summarise(n = n()) %>% 
+    group_by(month_planted) %>% 
+    summarise(
+      n_hh = n(),
+      prop = n_hh / 774 # 774 non-irrigating households who sold at least one crop
+    ) %>% 
+    mutate(
+      irrig_prev_50plus = "non-irrigating"
+    ) %>% 
+    ungroup(),
+  rbind(
+    irrig_month_crop1_low,
+    irrig_month_crop2_low,
+    irrig_month_crop3_low
+  ) %>%
+    group_by(
+      hhid,
+      month_planted
+    ) %>%
+    summarise(n = n()) %>%  
+    group_by(month_planted) %>%
+    summarise(
+      n_hh = n(), 
+      prop = n_hh / 99
+    ) %>%  # 99 "low prevalence" irrigators who sold at least one crop
+    mutate(
+      irrig_prev_50plus = "less than half"
+    ) %>% 
+    ungroup(),
+  rbind(
+    irrig_month_crop1_high,
+    irrig_month_crop2_high,
+    irrig_month_crop3_high
+  ) %>%
+    group_by(
+      hhid,
+      month_planted
+    ) %>%
+    summarise(n = n()) %>% 
+    group_by(month_planted) %>%
+    summarise(
+      n_hh = n(), 
+      prop = n_hh / 223
+    ) %>%  # 223 "high prevalence" irrigators who sold at least one crop
+    mutate(
+      irrig_prev_50plus = "more than half"
+    ) %>% 
+    ungroup()
+) %>%
+  mutate(
+    lower_ci = as.numeric(
+      ifelse(
+        irrig_prev_50plus == "non-irrigating", (prop - 1.96*(sqrt(prop*(1-prop)/774)))*100, ifelse(
+          irrig_prev_50plus == "less than half", (prop - 1.96*(sqrt(prop*(1-prop)/99)))*100, ifelse(
+            irrig_prev_50plus == "more than half", (prop - 1.96*(sqrt(prop*(1-prop)/223)))*100, "error"
+            )
+          )
+        )
+      ),
+    upper_ci = as.numeric(
+      ifelse(
+        irrig_prev_50plus == "non-irrigating", (prop + 1.96*(sqrt(prop*(1-prop)/774)))*100, ifelse(
+          irrig_prev_50plus == "less than half", (prop + 1.96*(sqrt(prop*(1-prop)/99)))*100, ifelse(
+            irrig_prev_50plus == "more than half", (prop + 1.96*(sqrt(prop*(1-prop)/223)))*100, "error"
+            )
+          )
+        )
+      ),
+    prop = prop * 100,
+    strata = case_when(
+      irrig_prev_50plus == "non-irrigating" ~ "Non-irrigating households (n = 774)",
+      irrig_prev_50plus == "less than half" ~ "Irrigators living in villages with \n low (< 50%) reported irrigation prevalence (n = 99)",
+      irrig_prev_50plus == "more than half" ~ "Irrigators living in villages with \n high (\u2265 50%) reported irrigation prevalence (n = 223)"
+    ),
+    strata = factor(strata, levels = c("Non-irrigating households (n = 774)", "Irrigators living in villages with \n low (< 50%) reported irrigation prevalence (n = 99)", "Irrigators living in villages with \n high (\u2265 50%) reported irrigation prevalence (n = 223)")),
+    month_planted = case_when(
+      month_planted == "sep2021" ~ "September",
+      month_planted == "aug2021" ~ "August",
+      month_planted == "jul2021" ~ "July",
+      month_planted == "june2021" ~ "June",
+      month_planted == "may2022" ~ "May",
+      month_planted == "apr2022" ~ "April",
+      month_planted == "mar2022" ~ "March",
+      month_planted == "feb2022" ~ "February",
+      month_planted == "jan2022" ~ "January",
+      month_planted == "dec2021" ~ "December",
+      month_planted == "nov2021" ~ "November",
+      month_planted == "oct2021" ~ "October"
+    ),
+    month_planted = factor(month_planted, levels = c("October", "November", "December", "January", "February", "March", "April", "May", "June", "July", "August", "September"))
+  ) %>% 
+  ggbarplot(x = "month_planted",
+            y = "prop",
+            fill = "irrig_prev_50plus",
+            palette = "Paired",
+            position = position_dodge(),
+            xlab = "",
+            ylab = "Percentage of households that planted one of their 'top 3 revenue' crops"
+            ) +
+  geom_errorbar(
+    aes(
+      group = irrig_prev_50plus, 
+      ymax = upper_ci, 
+      ymin = lower_ci
+      ),
+    position = position_dodge(width = 0.8), width = 0.25
+    ) +
+  facet_grid(~strata) + 
+  theme_gdocs() + 
+  theme(legend.position = "none",
+        axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1))
+
+```
+
+```{r figure4, echo = FALSE}
+
+df_irrig_prev_int_terms <- 
+  left_join(
+    tidy(model_int_categorical),
+    confint(model_int_categorical) %>% 
+      as_tibble() %>% 
+      mutate(
+        term = rownames(confint(model_int_categorical))
+      ) %>% 
+      rename(ci_lower = `2.5 %`,
+             ci_upper = `97.5 %`),
+    by = c("term")
+  ) %>% 
+  filter(
+    term == "irrigate_any_dry1:irrig_prev_village2. Less than half ?(25-33%)" |
+      term == "irrigate_any_dry1:irrig_prev_village3. About half? (~50%)" |
+      term == "irrigate_any_dry1:irrig_prev_village4. More than half? (66-75%)" | 
+      term == "irrigate_any_dry1:irrig_prev_village5. Almost all / All? (>90%)"
+  ) %>% 
+  mutate(
+    estimate = exp(estimate),
+    conf.low = exp(ci_lower),
+    conf.high = exp(ci_upper)
+  ) %>% 
+  select(
+    - statistic,
+    - std.error
+  )
+
+dwplot(rbind(df_irrig_prev_int_terms) %>% 
+         relabel_predictors(c(            
+           `irrigate_any_dry1:irrig_prev_village5. Almost all / All? (>90%)` = "Almost all \n (90%+)",
+           `irrigate_any_dry1:irrig_prev_village4. More than half? (66-75%)` = "More than half \n (66-75%)",
+           `irrigate_any_dry1:irrig_prev_village3. About half? (~50%)` = "About half \n (~50%)",
+           `irrigate_any_dry1:irrig_prev_village2. Less than half ?(25-33%)` = "Less than half \n (25-33%)")),
+       dot_args = list(size = 3), 
+       whisker_args = list(size = 1)) +
+  theme_bw(base_size = 15) + 
+  labs(title = "", 
+       x = "Annual crop revenue multiple ", 
+       y = "Reported village irrigation prevalence") +
+  theme(plot.title = element_text(face="bold"),
+        legend.position = "none",
+        legend.background = element_rect(colour="grey80"),
+        legend.title.align = .5) +
+  scale_shape_discrete(name  = "model", breaks = c(0, 1)) + 
+  scale_colour_grey(start = 0, end = 0, name = "model") + 
+  geom_vline(xintercept=c(1), linetype="dotted") +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) +
+  coord_flip()
+
+```
+
+# supplementary information
+
+``` {r supplementary information, echo = FALSE}
+
+# figure S1
+
+inputs_irrig_low <- data %>%
+  filter(
+    irrigate_any_dry == 1, 
+    irrig_prev_50plus == 0
+  ) %>% 
+  select(
+    hhid,
+    animal_waste:tractor
+  ) %>% 
+  pivot_longer(-hhid) %>%
+  rename(
+    input = name
+  ) %>% 
+  group_by(input, value) %>% 
+  summarise(
+    n_hh = n()
+  ) %>% 
+  filter(
+    value == "1"
+  ) %>% 
+  ungroup() %>% 
+  mutate(
+    prop_hh = n_hh / 103, # 103 irrigating households in low-density areas
+    irrig_prev_50plus = "Low (< 50%, n = 103)"
+  )
+
+inputs_irrig_high <- data %>%
+  filter(
+    irrigate_any_dry == 1, 
+    irrig_prev_50plus == 1
+  ) %>% 
+  select(
+    hhid,
+    animal_waste:tractor
+  ) %>% 
+  pivot_longer(-hhid) %>%
+  rename(
+    input = name
+  ) %>% 
+  group_by(input, value) %>% 
+  summarise(
+    n_hh = n()
+  ) %>% 
+  filter(
+    value == "1"
+  ) %>% 
+  ungroup() %>% 
+  mutate(
+    prop_hh = n_hh / 231, # 231 irrigating households in low-density areas
+    irrig_prev_50plus = "High (\u2265 50%, n = 231)"
+  )
+
+rbind(
+  inputs_irrig_low,
+  inputs_irrig_high
+) %>% 
+  arrange(prop_hh) %>% 
+  mutate(
+    irrig_prev_50plus = factor(irrig_prev_50plus, levels = c("Low (< 50%, n = 103)", "High (\u2265 50%, n = 231)")),
+    input = case_when(
+      input == "tractor" ~ "Tractor",
+      input == "labour" ~ "Hired \n labor",
+      input == "seeds" ~ "Purchased \n seeds",
+      input == "animal_waste" ~ "Manure \n fertilizer",
+      input == "ox_plough" ~ "Ox plough",
+      input == "pesticides" ~ "Pesticides",
+      input == "chemical_synthetic" ~ "Chemical \n fertilizer",
+    ),
+    input = factor(input, levels = c("Manure \n fertilizer", "Chemical \n fertilizer", "Purchased \n seeds", "Pesticides", "Hired \n labor", "Ox plough", "Tractor"))
+  ) %>%
+  mutate(
+    lower_ci = as.numeric(
+      ifelse(
+          irrig_prev_50plus == "Low (< 50%, n = 103)", (prop_hh - 1.96*(sqrt(prop_hh*(1-prop_hh)/103))), ifelse(
+            irrig_prev_50plus == "High (\u2265 50%, n = 231)", (prop_hh - 1.96*(sqrt(prop_hh*(1-prop_hh)/231))), "error"
+            )
+          )
+      ),
+    upper_ci = as.numeric(
+      ifelse(
+          irrig_prev_50plus == "Low (< 50%, n = 103)", (prop_hh + 1.96*(sqrt(prop_hh*(1-prop_hh)/103))), ifelse(
+            irrig_prev_50plus == "High (\u2265 50%, n = 231)", (prop_hh + 1.96*(sqrt(prop_hh*(1-prop_hh)/231))), "error"
+          )
+        )
+      )
+    ) %>% 
+  ggbarplot(
+    x = "input",
+    y = "prop_hh",
+    fill = "irrig_prev_50plus",
+    position = position_dodge(),
+    palette = "Paired",
+    xlab = "",
+    ylab = ""
+  ) +
+  geom_errorbar(
+    aes(
+      group = irrig_prev_50plus, 
+      ymax = upper_ci, 
+      ymin = lower_ci
+    ),
+    position = position_dodge(width = 0.9), width = 0.2
+  ) +
+  theme_gdocs() +
+  guides(fill = guide_legend(title = "Reported village irrigation prevalence", nrow = 1)) +
+  theme(text = element_text(size=15)) +
+  scale_y_continuous(labels = percent_format(accuracy = 1)) 
+
+# table S1
+
+tab_model(
+  model_noint,
+  pred.labels = c("Intercept",
+                  "Irrigator (Yes)",
+                  "High (\u2265 50%) village irrigation prevalence (Yes)",
+                  "Female HOH (Yes)",
+                  "Household members aged 5-65 [#]",
+                  "HOH attended formal school (Yes)",
+                  "Owns mobile phone (Yes)",
+                  "Earns from non-farm activities (Yes)",
+                  "Total area cultivated [acres]",
+                  "Hired labor (Yes)",
+                  "Woreda (Farta)",
+                  "Woreda (North Mecha)",
+                  "Walking time to primary market [hr]",
+                  "Walking time to paved road [hr]"),
+  dv.labels = c(""),
+  string.pred = "Coefficient",
+  string.ci = "CI (95%)",
+  show.se = TRUE,
+  string.se = "Std. Error",
+  string.est = "Estimate",
+  string.p = "p - value"
+  )
+
+# table S2
+
+tab_model(
+  model_int,
+  pred.labels = c("Intercept",
+                  "Irrigator (Yes)",
+                  "High (\u2265 50%) village irrigation prevalence (Yes)",
+                  "Female HOH (Yes)",
+                  "Household members aged 5-65 [#]",
+                  "HOH attended formal school (Yes)",
+                  "Owns mobile phone (Yes)",
+                  "Earns from non-farm activities (Yes)",
+                  "Total area cultivated [acres]",
+                  "Hired labor (Yes)",
+                  "Woreda (Farta)",
+                  "Woreda (North Mecha)",
+                  "Walking time to primary market [hr]",
+                  "Walking time to paved road [hr]",
+                  "Irrigator x High (\u2265 50%) village irrigation prevalence"),
+  dv.labels = c(""),
+  string.pred = "Coefficient",
+  string.ci = "CI (95%)",
+  show.se = TRUE,
+  string.se = "Std. Error",
+  string.est = "Estimate",
+  string.p = "p - value"
+)
+
+# table S3
+
+tab_model(
+  model_int_robust,
+  pred.labels = c("Intercept",
+                  "Irrigator (Yes)",
+                  "High (\u2265 50%) village irrigation prevalence (Yes)",
+                  "Female HOH (Yes)",
+                  "Household members aged 5-65 [#]",
+                  "HOH attended formal school (Yes)",
+                  "Owns mobile phone (Yes)",
+                  "Earns from non-farm activities (Yes)",
+                  "Total area cultivated [acres]",
+                  "Hired labor (Yes)",
+                  "Woreda (Farta)",
+                  "Woreda (North Mecha)",
+                  "Walking time to primary market [hr]",
+                  "Walking time to paved road [hr]",
+                  "Probability of living below the IPL [%]",
+                  "AEZ - Tropics, highland, semi-arid, no soil/terrain limitations", 
+                  "AEZ - Tropics, highland, semi-arid, with soil/terrain limitations", 
+                  "AEZ - Tropics, highland, sub-humid, with soil/terrain limitations", 
+                  "AEZ - Tropics, highland, sub-humid, no soil/terrain limitations", 
+                  "AEZ - Land with severe soil/terrain limitations", 
+                  "Irrigator x High (\u2265 50%) village irrigation prevalence"),
+  dv.labels = c(""),
+  string.pred = "Coefficient",
+  string.ci = "CI (95%)",
+  show.se = TRUE,
+  string.se = "Std. Error",
+  string.est = "Estimate",
+  string.p = "p - value"
+  )
+
+# table S4
+
+tab_model(
+  model_int_revpp,
+  pred.labels = c("Intercept",
+                  "Irrigator (Yes)",
+                  "High (\u2265 50%) village irrigation prevalence (Yes)",
+                  "Female HOH (Yes)",
+                  "HOH attended formal school (Yes)",
+                  "Owns mobile phone (Yes)",
+                  "Earns from non-farm activities (Yes)",
+                  "Total area cultivated [acres]",
+                  "Hired labor (Yes)",
+                  "Woreda (Farta)",
+                  "Woreda (North Mecha)",
+                  "Walking time to primary market [hr]",
+                  "Walking time to paved road [hr]",
+                  "Irrigator x High (\u2265 50%) village irrigation prevalence"),
+  dv.labels = c(""),
+  string.pred = "Coefficient",
+  string.ci = "CI (95%)",
+  show.se = TRUE,
+  string.se = "Std. Error",
+  string.est = "Estimate",
+  string.p = "p - value"
+)
+
+# table S5
+
+tab_model(
+  model_sold_min_one_dry_crop,
+  pred.labels = c("Intercept",
+                  "High (\u2265 50%) village irrigation prevalence (Yes)",
+                  "Female HOH (Yes)",
+                  "Household members aged 5-65 [#]",
+                  "HOH attended formal school (Yes)",
+                  "Owns mobile phone (Yes)",
+                  "Earns from non-farm activities (Yes)",
+                  "Hired labor (Yes)",
+                  "Total area cultivated [acres]",
+                  "Nonmanual irrigation technology (Yes)",
+                  "Woreda (Farta)",
+                  "Woreda (North Mecha)",
+                  "Walking time to primary market [hr]",
+                  "Walking time to paved road [hr]"),
+  dv.labels = c(""),
+  string.pred = "Coefficient",
+  string.ci = "CI (95%)",
+  show.se = TRUE,
+  string.se = "Std. Error",
+  string.est = "Estimate",
+  string.p = "p - value"
+)
+
+
+# table S6
+
+tab_model(
+  model_sold_local_trader,
+  pred.labels = c("Intercept",
+                  "High (\u2265 50%) village irrigation prevalence (Yes)",
+                  "Female HOH (Yes)",
+                  "Household members aged 5-65 [#]",
+                  "HOH attended formal school (Yes)",
+                  "Owns mobile phone (Yes)",
+                  "Earns from non-farm activities (Yes)",
+                  "Hired labor (Yes)",
+                  "Total area cultivated [acres]",
+                  "Nonmanual irrigation technology (Yes)",
+                  "Woreda (Farta)",
+                  "Woreda (North Mecha)",
+                  "Walking time to primary market [hr]",
+                  "Walking time to paved road [hr]"),
+  dv.labels = c(""),
+  string.pred = "Coefficient",
+  string.ci = "CI (95%)",
+  show.se = TRUE,
+  string.se = "Std. Error",
+  string.est = "Estimate",
+  string.p = "p - value"
+)
+
+# table S7
+
+tab_model(
+  model_top3_dry_month,
+  pred.labels = c("Intercept",
+                  "High (\u2265 50%) village irrigation prevalence (Yes)",
+                  "Female HOH (Yes)",
+                  "Household members aged 5-65 [#]",
+                  "HOH attended formal school (Yes)",
+                  "Owns mobile phone (Yes)",
+                  "Earns from non-farm activities (Yes)",
+                  "Hired labor (Yes)",
+                  "Total area cultivated [acres]",
+                  "Nonmanual irrigation technology (Yes)",
+                  "Woreda (Farta)",
+                  "Woreda (North Mecha)",
+                  "Walking time to primary market [hr]",
+                  "Walking time to paved road [hr]"),
+  dv.labels = c(""),
+  string.pred = "Coefficient",
+  string.ci = "CI (95%)",
+  show.se = TRUE,
+  string.se = "Std. Error",
+  string.est = "Estimate",
+  string.p = "p - value"
+)
+
+# table S8
+
+tab_model(
+  model_num_dry_crops_planted,
+  pred.labels = c("Intercept",
+                  "High (\u2265 50%) village irrigation prevalence (Yes)",
+                  "Female HOH (Yes)",
+                  "Household members aged 5-65 [#]",
+                  "HOH attended formal school (Yes)",
+                  "Owns mobile phone (Yes)",
+                  "Earns from non-farm activities (Yes)",
+                  "Hired labor (Yes)",
+                  "Total area cultivated [acres]",
+                  "Nonmanual irrigation technology (Yes)",
+                  "Woreda (Farta)",
+                  "Woreda (North Mecha)",
+                  "Walking time to primary market [hr]",
+                  "Walking time to paved road [hr]"),
+  dv.labels = c(""),
+  string.pred = "Coefficient",
+  string.ci = "CI (95%)",
+  show.se = TRUE,
+  string.se = "Std. Error",
+  string.est = "Estimate",
+  string.p = "p - value"
+  
+)
+
+# table S9
+
+tab_model(
+  model_seeds,
+  pred.labels = c("Intercept",
+                  "High (\u2265 50%) village irrigation prevalence (Yes)",
+                  "Female HOH (Yes)",
+                  "Household members aged 5-65 [#]",
+                  "HOH attended formal school (Yes)",
+                  "Owns mobile phone (Yes)",
+                  "Earns from non-farm activities (Yes)",
+                  "Hired labor (Yes)",
+                  "Total area cultivated [acres]",
+                  "Nonmanual irrigation technology (Yes)",
+                  "Woreda (Farta)",
+                  "Woreda (North Mecha)",
+                  "Walking time to primary market [hr]",
+                  "Walking time to paved road [hr]"),
+  dv.labels = c(""),
+  string.pred = "Coefficient",
+  string.ci = "CI (95%)",
+  show.se = TRUE,
+  string.se = "Std. Error",
+  string.est = "Estimate",
+  string.p = "p - value"
+)
+
+# table S10
+
+tab_model(
+  model_labor,
+  pred.labels = c("Intercept",
+                  "High (\u2265 50%) village irrigation prevalence (Yes)",
+                  "Female HOH (Yes)",
+                  "Household members aged 5-65 [#]",
+                  "HOH attended formal school (Yes)",
+                  "Owns mobile phone (Yes)",
+                  "Earns from non-farm activities (Yes)",
+                  "Total area cultivated [acres]",
+                  "Nonmanual irrigation technology (Yes)",
+                  "Woreda (Farta)",
+                  "Woreda (North Mecha)",
+                  "Walking time to primary market [hr]",
+                  "Walking time to paved road [hr]"),
+  dv.labels = c(""),
+  string.pred = "Coefficient",
+  string.ci = "CI (95%)",
+  show.se = TRUE,
+  string.se = "Std. Error",
+  string.est = "Estimate",
+  string.p = "p - value"
+)
+
+# table S11
+
+tab_model(
+  model_int_categorical,
+  pred.labels = c("Intercept",
+                  "Irrigation (Yes)",
+                  "Village irrigation prevalence (less than half, 25-33%)",
+                  "Village irrigation prevalence (about half, ~50%)",
+                  "Village irrigation prevalence (more than half, 66-75%)",
+                  "Village irrigation prevalence (almost all, 90%+)",
+                  "Female HOH (Yes)",
+                  "Household members aged 5-65 [#]",
+                  "HOH attended formal school (Yes)",
+                  "Owns mobile phone (Yes)",
+                  "Earns from non-farm activities (Yes)",
+                  "Total area cultivated [acres]",
+                  "Hired labor (Yes)",
+                  "Woreda (Farta)",
+                  "Woreda (North Mecha)",
+                  "Time to primary market [hr]",
+                  "Time to paved road [hr]",
+                  "Irrigation x Village irrigation prevalence (less than half, 25-33%)",
+                  "Irrigation x Village irrigation prevalence (about half, ~50%)",
+                  "Irrigation x Village irrigation prevalence (more than half, 66-75%)",
+                  "Irrigation x Village irrigation prevalence (almost all, 90%+)"),
+  dv.labels = c(""),
+  string.pred = "Coefficient",
+  string.ci = "CI (95%)",
+  show.se = TRUE,
+  string.se = "Std. Error",
+  string.est = "Estimate",
+  string.p = "p - value"
+  )
+
+# table S12
+
+tab_model(
+  model_int_categorical_robust,
+  pred.labels = c("Intercept",
+                  "Irrigator (Yes)",
+                  "Village irrigation prevalence (less than half, 25-33%)",
+                  "Village irrigation prevalence (about half, ~50%)",
+                  "Village irrigation prevalence (more than half, 66-75%)",
+                  "Village irrigation prevalence (almost all, 90%+)",
+                  "Female HOH (Yes)",
+                  "Household members aged 5-65 [#]",
+                  "HOH attended formal school (Yes)",
+                  "Owns mobile phone (Yes)",
+                  "Earns from non-farm activities (Yes)",
+                  "Total area cultivated [acres]",
+                  "Hired labor (Yes)",
+                  "Woreda (Farta)",
+                  "Woreda (North Mecha)",
+                  "Walking time to primary market [hr]",
+                  "Walking time to paved road [hr]",
+                  "Probability of living below the IPL [%]",
+                  "AEZ - Tropics, highland, semi-arid, no soil/terrain limitations", 
+                  "AEZ - Tropics, highland, semi-arid, with soil/terrain limitations", 
+                  "AEZ - Tropics, highland, sub-humid, with soil/terrain limitations", 
+                  "AEZ - Tropics, highland, sub-humid, no soil/terrain limitations", 
+                  "AEZ - Land with severe soil/terrain limitations", 
+                  "Irrigation x Village irrigation prevalence (less than half, 25-33%)",
+                  "Irrigation x Village irrigation prevalence (about half, ~50%)",
+                  "Irrigation x Village irrigation prevalence (more than half, 66-75%)",
+                  "Irrigation x Village irrigation prevalence (almost all, 90%+)"),
+  dv.labels = c(""),
+  string.pred = "Coefficient",
+  string.ci = "CI (95%)",
+  show.se = TRUE,
+  string.se = "Std. Error",
+  string.est = "Estimate",
+  string.p = "p - value"
+  )
+
+# table S13
+
+tab_model(
+  model_int_categorical_revpp,
+  pred.labels = c("Intercept",
+                  "Irrigation (Yes)",
+                  "Village irrigation prevalence (less than half, 25-33%)",
+                  "Village irrigation prevalence (about half, ~50%)",
+                  "Village irrigation prevalence (more than half, 66-75%)",
+                  "Village irrigation prevalence (almost all, 90%+)",
+                  "Female HOH (Yes)",
+                  "HOH attended formal school (Yes)",
+                  "Owns mobile phone (Yes)",
+                  "Earns from non-farm activities (Yes)",
+                  "Total area cultivated [acres]",
+                  "Hired labor (Yes)",
+                  "Woreda (Farta)",
+                  "Woreda (North Mecha)",
+                  "Time to primary market [hr]",
+                  "Time to paved road [hr]",
+                  "Irrigation x Village irrigation prevalence (less than half, 25-33%)",
+                  "Irrigation x Village irrigation prevalence (about half, ~50%)",
+                  "Irrigation x Village irrigation prevalence (more than half, 66-75%)",
+                  "Irrigation x Village irrigation prevalence (almost all, 90%+)"),
+  dv.labels = c(""),
+  string.pred = "Coefficient",
+  string.ci = "CI (95%)",
+  show.se = TRUE,
+  string.se = "Std. Error",
+  string.est = "Estimate",
+  string.p = "p - value"
+  )
+
+# table S14
+
+tab_model(
+  model_irrig_gender_gap,
+  pred.labels = c("Intercept",
+                  "Female HOH (Yes)",
+                  "Household members aged 5-65 [#]",
+                  "HOH attended formal school (Yes)",
+                  "Owns mobile phone (Yes)",
+                  "Earns from non-farm activities (Yes)",
+                  "Total area cultivated [acres]",
+                  "Hired labor (Yes)",
+                  "Woreda (Farta)",
+                  "Woreda (North Mecha)",
+                  "Time to primary market [hr]",
+                  "Time to paved road [hr]"),
+  dv.labels = c(""),
+  string.pred = "Coefficient",
+  string.ci = "CI (95%)",
+  show.se = TRUE,
+  string.se = "Std. Error",
+  string.est = "Estimate",
+  string.p = "p - value"
+  )
+```
