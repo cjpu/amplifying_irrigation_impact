@@ -30,11 +30,11 @@ ethiopia_baseline_selected_vars_raw_rural_cultivators <-
       able_to_answer == "1. Yes" &
       consent_obtained == "Yes" &
       
-    # filter for rural households that grew crops last year  
+      # filter for rural households that grew crops last year  
       
       rur_urb == "RURAL" &
       grew_crops == "Yes" 
-      
+    
   ) %>% 
   
   # remove eligibility variables
@@ -95,9 +95,21 @@ ethiopia_baseline_selected_vars_cleaned_rural_cultivators <-
     irrigate_any_dry = factor(
       ifelse( 
         irrigate_dry_1 == 1 | irrigate_dry_2 == 1 | irrigate_dry_3 == 1, 1, 0 
-        ) # 0 NAs
-      ),
-
+      ) # 0 NAs
+    ),
+    
+    # create binary variable indicating whether the household used exclusively surface water, exclusively groundwater, or a combination of both on the irrigated parcels
+    
+    irrig_water_source_concat = paste(parcel_wtr_src_dry_1, parcel_wtr_src_dry_2, parcel_wtr_src_dry_3),
+    
+    irrig_water_source = ifelse(
+      irrig_water_source_concat == "lake_pond_river_surface  " | irrig_water_source_concat == "lake_pond_river_surface  lake_pond_river_surface" | irrig_water_source_concat == "-77 lake_pond_river_surface " | irrig_water_source_concat ==  "lake_pond_river_surface lake_pond_river_surface lake_pond_river_surface" | irrig_water_source_concat == "-77  lake_pond_river_surface" | irrig_water_source_concat == "lake_pond_river_surface lake_pond_river_surface " | irrig_water_source_concat == "  lake_pond_river_surface" | irrig_water_source_concat == " lake_pond_river_surface " | irrig_water_source_concat == " lake_pond_river_surface lake_pond_river_surface", "surface only", ifelse(
+        irrig_water_source_concat == "  well_borehole_pump_ground" | irrig_water_source_concat == " well_borehole_pump_ground " | irrig_water_source_concat == "well_borehole_pump_ground well_borehole_pump_ground " | irrig_water_source_concat == " well_borehole_pump_ground well_borehole_pump_ground" | irrig_water_source_concat == "well_borehole_pump_ground  " | irrig_water_source_concat == "well_borehole_pump_ground well_borehole_pump_ground well_borehole_pump_ground" | irrig_water_source_concat == "well_borehole_pump_ground  well_borehole_pump_ground" | irrig_water_source_concat == "well_borehole_pump_ground 96 96", "groundwater only", ifelse(
+          irrig_water_source_concat == " well_borehole_pump_ground lake_pond_river_surface" | irrig_water_source_concat == "tap_standpipe lake_pond_river_surface " | irrig_water_source_concat == "lake_pond_river_surface well_borehole_pump_ground ", "mixed surface and groundwater", NA
+        )
+      )
+    ), 
+    
     # create continuous variable indicating area planted on each plot in the rainy season (acres)
     
     acres_planted_rainy_1 = ifelse(
@@ -144,11 +156,11 @@ ethiopia_baseline_selected_vars_cleaned_rural_cultivators <-
       dry_ssn_area_unit_1 == "2. Timad", dry_ssn_area_val_1 * 0.62, ifelse( 
         dry_ssn_area_unit_1 == "3. Gemed", dry_ssn_area_val_1 * 0.62, ifelse( 
           dry_ssn_area_unit_1 == "4. Qada", dry_ssn_area_val_1 * 0.62, ifelse( 
-              dry_ssn_area_unit_1 == "", 0, NA 
-            )
+            dry_ssn_area_unit_1 == "", 0, NA 
           )
         )
-      ),
+      )
+    ),
     
     acres_planted_dry_2 = ifelse(
       dry_ssn_area_unit_2 == "2. Timad", dry_ssn_area_val_2 * 0.62, ifelse( 
@@ -166,34 +178,34 @@ ethiopia_baseline_selected_vars_cleaned_rural_cultivators <-
       dry_ssn_area_unit_3 == "2. Timad", dry_ssn_area_val_3 * 0.62, ifelse( 
         dry_ssn_area_unit_3 == "3. Gemed", dry_ssn_area_val_3 * 0.62, ifelse( 
           dry_ssn_area_unit_3 == "4. Qada", dry_ssn_area_val_3 * 0.62, ifelse(
-              dry_ssn_area_unit_3 == "7. Response is in dimensions (meters)", dslw_length_3 * dslw_width_3 * 0.00025, ifelse(
-                dry_ssn_area_unit_3 == "", 0, NA 
-              )
+            dry_ssn_area_unit_3 == "7. Response is in dimensions (meters)", dslw_length_3 * dslw_width_3 * 0.00025, ifelse(
+              dry_ssn_area_unit_3 == "", 0, NA 
             )
           )
         )
+      )
     ), 
-     
+    
     # create continuous variable indicating total acres planted in the rainy season
-
+    
     total_acres_planted_rainy = acres_planted_rainy_1 + acres_planted_rainy_2 + acres_planted_rainy_3,
-
+    
     # create continuous variable indicating total area planted in the dry season
-
+    
     total_acres_planted_dry = acres_planted_dry_1 + acres_planted_dry_2 + acres_planted_dry_3,
-
+    
     # assign NAs to illogical responses re: total area planted in the rainy season
-
+    
     total_acres_planted_rainy_updated = ifelse(
       total_acres_planted_rainy == 0 & 
         (planting_season_1 == "1. Planted crops in the RAINY season only" | 
-        planting_season_2 == "1. Planted crops in the RAINY season only" | 
-        planting_season_3 == "1. Planted crops in the RAINY season only" | 
-        planting_season_1 == "3. Planted crops in RAINY AND DRY seasons" |
-        planting_season_2 == "3. Planted crops in RAINY AND DRY seasons" |
-        planting_season_3 == "3. Planted crops in RAINY AND DRY seasons"), NA, total_acres_planted_rainy 
+           planting_season_2 == "1. Planted crops in the RAINY season only" | 
+           planting_season_3 == "1. Planted crops in the RAINY season only" | 
+           planting_season_1 == "3. Planted crops in RAINY AND DRY seasons" |
+           planting_season_2 == "3. Planted crops in RAINY AND DRY seasons" |
+           planting_season_3 == "3. Planted crops in RAINY AND DRY seasons"), NA, total_acres_planted_rainy 
     ),
-
+    
     # assign NAs to illogical responses re: total area planted in the dry season
     
     total_acres_planted_dry_updated = ifelse(
@@ -205,9 +217,9 @@ ethiopia_baseline_selected_vars_cleaned_rural_cultivators <-
            planting_season_2 == "3. Planted crops in RAINY AND DRY seasons" |
            planting_season_3 == "3. Planted crops in RAINY AND DRY seasons"), NA, total_acres_planted_dry
     ),
-
+    
     # create continuous variable indicating total acres planted on an annual basis
-
+    
     total_acres_planted_annual = total_acres_planted_rainy_updated + total_acres_planted_dry_updated,
     
     # create continuous variable indicating total number of crops planted in the dry season only
@@ -257,7 +269,7 @@ ethiopia_baseline_selected_vars_cleaned_rural_cultivators <-
         )
       )
     ),
-
+    
     # create continuous variable indicating total gross revenue earned from top 3 crops
     
     crop_rev_total = as.numeric(
@@ -266,11 +278,11 @@ ethiopia_baseline_selected_vars_cleaned_rural_cultivators <-
           is.na(crop_rev_top1) == FALSE & is.na(crop_rev_top2) == TRUE & is.na(crop_rev_top3) == TRUE, crop_rev_top1, ifelse(
             is.na(crop_rev_top1) == FALSE & is.na(crop_rev_top2) == FALSE & is.na(crop_rev_top3) == TRUE, crop_rev_top1 + crop_rev_top2, ifelse(
               is.na(crop_rev_top1) == FALSE & is.na(crop_rev_top2) == FALSE & is.na(crop_rev_top3) == FALSE, crop_rev_top1 + crop_rev_top2 + crop_rev_top3, "error" 
-              ) 
-            )
+            ) 
           )
         )
-      ),
+      )
+    ),
     
     # create categorical variable indicating where the household sold most of their top earning crops
     
@@ -329,7 +341,7 @@ ethiopia_baseline_selected_vars_cleaned_rural_cultivators <-
       ifelse(
         mobile_phone == "Yes", 1, ifelse(
           mobile_phone == "No", 0, "error"
-          )
+        )
       )
     ),
     
@@ -338,7 +350,7 @@ ethiopia_baseline_selected_vars_cleaned_rural_cultivators <-
     irrig_prev_village = farmers_planted, 
     
     # create binary variable indicating whether the self-reported prevalence of irrigators in the household's village is 50% or more
-  
+    
     irrig_prev_50plus = as.factor(
       ifelse(
         is.na(irrig_prev_village) == TRUE, NA, ifelse(
@@ -433,14 +445,14 @@ ethiopia_baseline_selected_vars_cleaned_rural_cultivators <-
       )
     ),
     
-    # create binary variable indicating whether manual or non-manual irrigation technologies were used 
+    # create binary variable indicating whether manual or non-manual irrigation technologies were used (note: focus is on the most advanced technology if multiple irrigation strategies are used)
     
     nonmanual_irrig = as.factor(
       ifelse(
         fuel_usage_petroldiesel == "Yes", 1, ifelse(
           fuel_usage_nofuelmanual == "Yes" | fuel_usage_nofuelgravity == "Yes", 0, ifelse(
             fuel_usage == "", NA, "error" 
-            )
+          )
         )
       )
     ),
@@ -470,12 +482,12 @@ ethiopia_baseline_selected_vars_cleaned_rural_cultivators <-
     remittances = ifelse(
       sent_money == "Yes", 1, ifelse(
         sent_money == "No", 0, NA 
-        )
       )
-    ) %>%
-
+    )
+  ) %>%
+  
   # remove variables that aren't being used for downstream analyses
-
+  
   select(
     - other_soldt_en_1,
     - other_soldt_en_2,
@@ -487,6 +499,7 @@ ethiopia_baseline_selected_vars_cleaned_rural_cultivators <-
     - irrigate_dry_1,
     - irrigate_dry_2,
     - irrigate_dry_3,
+    - irrig_water_source_concat,
     - parcel_area_unit_1,
     - parcel_area_unit_2,
     - parcel_area_unit_3,
@@ -543,7 +556,7 @@ ethiopia_baseline_selected_vars_cleaned_rural_cultivators <-
     - fuel_usage_petroldiesel,
     - fuel_usage_nofuelmanual,
     - fuel_usage_nofuelgravity,
-    - fuel_usage,
+    # - fuel_usage,
     - market_trans_mode,
     - other_mtm_en,
     - bicycle_yn,
@@ -554,7 +567,7 @@ ethiopia_baseline_selected_vars_cleaned_rural_cultivators <-
     - other_mew_en,
     - sent_money
   )
-    
+
 # only keep households in irrigating EAs to reduce confounding effects ----------------------------------
 
 irrigating_eas <- ethiopia_baseline_selected_vars_cleaned_rural_cultivators %>% 
